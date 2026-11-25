@@ -1,0 +1,1430 @@
+<!-- Trung tâm dự báo thời tiết — Dự án của Chí Hiếu -->
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Dự báo thời tiết — Sa Pa</title>
+  <meta name="author" content="Chí Hiếu">
+  <meta name="description" content="Bảng điều khiển dự báo thời tiết Sa Pa với diễn biến nhiệt độ trong tuần và các thành phố lân cận.">
+  <meta name="theme-color" content="#04121b">
+  <meta property="og:title" content="Dự báo thời tiết — Sa Pa">
+  <meta property="og:description" content="Bảng điều khiển dự báo thời tiết Sa Pa với diễn biến nhiệt độ trong tuần và các thành phố lân cận.">
+  <meta property="og:type" content="website">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Inter+Tight:wght@500&display=swap" rel="stylesheet">
+  <style>
+    /* Khung tham chiếu 1357 x 871 và biến chuyển động */
+    :root {
+      --u: min(100vw / 1357, 100dvh / 871);
+      --ink: #ffffff;
+      --glass: rgba(255, 255, 255, .155);
+      --glass-line: rgba(255, 255, 255, .20);
+      --e-out: cubic-bezier(.16, 1, .3, 1);
+      --e-soft: cubic-bezier(.22, .61, .36, 1);
+      --e-pen: cubic-bezier(.37, .01, .2, 1);
+    }
+    @supports not (height: 100dvh) {
+      :root {
+        --u: min(100vw / 1357, 100vh / 871);
+      }
+    }
+
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html, body {
+      height: 100%;
+      overflow: hidden;
+      background-color: #04121b;
+      color: var(--ink);
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      font-feature-settings: "kern" 1;
+    }
+
+    button, a {
+      font: inherit;
+      color: inherit;
+      text-decoration: none;
+    }
+
+    button {
+      background: none;
+      border: 0;
+      cursor: pointer;
+    }
+
+    :focus-visible {
+      outline: calc(2 * var(--u)) solid #ffffff;
+      outline-offset: calc(2 * var(--u));
+    }
+
+    /* Sân khấu chính và hai lớp ảnh nền bão */
+    .stage {
+      position: fixed;
+      inset: 0;
+      overflow: hidden;
+    }
+
+    .storm-fallback {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+      z-index: 0;
+      pointer-events: none;
+    }
+
+    .bg {
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      background-image: url("./assets/storm-background.jpg");
+      background-size: cover;
+      background-position: center 25%;
+      background-repeat: no-repeat;
+      pointer-events: none;
+    }
+
+    /* Lớp tối viền giúp chữ trắng luôn nổi rõ trên nền bão */
+    .stage::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      pointer-events: none;
+      background:
+        linear-gradient(105deg, rgba(4, 16, 24, .34) 0%, rgba(4, 16, 24, .20) 40%, rgba(4, 16, 24, .06) 78%, transparent 100%),
+        linear-gradient(180deg, rgba(4, 16, 24, .12) 0%, transparent 22%),
+        linear-gradient(0deg, rgba(4, 16, 24, .07), rgba(4, 16, 24, .07));
+    }
+
+    /* Thanh bên kính lỏng */
+    .sidebar {
+      position: absolute;
+      left: calc(16 * var(--u));
+      top: calc(14 * var(--u));
+      bottom: calc(7 * var(--u));
+      width: calc(72 * var(--u));
+      z-index: 3;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding-top: calc(22 * var(--u));
+      padding-bottom: calc(52 * var(--u));
+      border-radius: calc(26 * var(--u));
+      border: 1px solid var(--glass-line);
+      background: linear-gradient(180deg, rgba(255, 255, 255, .125) 0%, rgba(255, 255, 255, .135) 13%, rgba(255, 255, 255, .098) 34%, rgba(255, 255, 255, .092) 100%);
+      -webkit-backdrop-filter: blur(calc(18 * var(--u))) saturate(115%);
+      backdrop-filter: blur(calc(18 * var(--u))) saturate(115%);
+      animation: slideL .92s var(--e-out) .05s both;
+    }
+
+    .dot {
+      position: absolute;
+      left: calc(-2 * var(--u));
+      top: calc(116.5 * var(--u));
+      width: calc(5 * var(--u));
+      height: calc(29 * var(--u));
+      border-radius: calc(3 * var(--u));
+      background: #ffffff;
+      box-shadow: 0 0 calc(10 * var(--u)) rgba(255, 255, 255, .55);
+      transform-origin: center center;
+      animation: growY .50s var(--e-out) .68s both;
+    }
+
+    .logo {
+      width: calc(40 * var(--u));
+      height: calc(40 * var(--u));
+      display: block;
+      flex-shrink: 0;
+      animation: popIn .70s var(--e-out) .26s both;
+    }
+
+    .nav {
+      margin-top: calc(57.5 * var(--u));
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: calc(43 * var(--u));
+    }
+
+    .nav a {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: calc(36 * var(--u));
+      height: calc(23 * var(--u));
+      opacity: .78;
+      transition: opacity .22s var(--e-out), transform .22s var(--e-out);
+    }
+
+    .nav a[aria-current="page"] {
+      opacity: 1;
+    }
+
+    .nav a:hover {
+      opacity: 1;
+      transform: translateY(calc(-1 * var(--u)));
+    }
+
+    .nav svg, .logout svg {
+      width: calc(23 * var(--u));
+      height: calc(23 * var(--u));
+      display: block;
+    }
+
+    .nav a:nth-child(1) { animation: riseIn .60s var(--e-out) .36s both; }
+    .nav a:nth-child(2) { animation: riseIn .60s var(--e-out) .41s both; }
+    .nav a:nth-child(3) { animation: riseIn .60s var(--e-out) .46s both; }
+    .nav a:nth-child(4) { animation: riseIn .60s var(--e-out) .51s both; }
+    .nav a:nth-child(5) { animation: riseIn .60s var(--e-out) .56s both; }
+
+    .logout {
+      margin-top: auto;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: calc(36 * var(--u));
+      height: calc(36 * var(--u));
+      opacity: .82;
+      transition: opacity .22s var(--e-out), transform .22s var(--e-out);
+      animation: riseIn .60s var(--e-out) .70s both;
+    }
+
+    .logout:hover {
+      opacity: 1;
+      transform: translateY(calc(-1 * var(--u)));
+    }
+
+    /* Đầu trang */
+    .header {
+      position: absolute;
+      top: calc(22 * var(--u));
+      left: calc(126 * var(--u));
+      right: calc(37 * var(--u));
+      height: calc(52 * var(--u));
+      z-index: 2;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+    }
+
+    .user-meta {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .greet {
+      font-size: calc(16 * var(--u));
+      font-weight: 400;
+      line-height: 1.1;
+      color: rgba(255, 255, 255, .93);
+      animation: riseIn .70s var(--e-out) .14s both;
+    }
+
+    .uname {
+      font-size: calc(19.5 * var(--u));
+      font-weight: 700;
+      line-height: 1.15;
+      letter-spacing: calc(-.35 * var(--u));
+      margin-top: calc(13 * var(--u));
+      animation: riseIn .80s var(--e-out) .22s both;
+    }
+
+    .tools {
+      display: flex;
+      align-items: center;
+      gap: calc(16 * var(--u));
+    }
+
+    .tool {
+      width: calc(52 * var(--u));
+      height: calc(52 * var(--u));
+      border-radius: 50%;
+      border: 1px solid rgba(255, 255, 255, .18);
+      background: rgba(255, 255, 255, .15);
+      -webkit-backdrop-filter: blur(calc(16 * var(--u))) saturate(115%);
+      backdrop-filter: blur(calc(16 * var(--u))) saturate(115%);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      transition: background-color .22s var(--e-out), transform .22s var(--e-out);
+    }
+
+    .tool:hover {
+      background: rgba(255, 255, 255, .24);
+    }
+
+    .tool svg {
+      width: calc(21 * var(--u));
+      height: calc(21 * var(--u));
+      display: block;
+    }
+
+    .avatar-btn {
+      width: calc(52 * var(--u));
+      height: calc(52 * var(--u));
+      border-radius: 50%;
+      border: 1px solid rgba(255, 255, 255, .24);
+      overflow: hidden;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(255, 255, 255, .15);
+      transition: transform .22s var(--e-out), border-color .22s var(--e-out);
+    }
+
+    .avatar-btn:hover {
+      border-color: rgba(255, 255, 255, .45);
+    }
+
+    .avatar-btn svg, .avatar-btn img {
+      width: 100%;
+      height: 100%;
+      display: block;
+      object-fit: cover;
+    }
+
+    .tools > *:nth-child(1) { animation: popIn .58s var(--e-out) .30s both; }
+    .tools > *:nth-child(2) { animation: popIn .58s var(--e-out) .365s both; }
+    .tools > *:nth-child(3) { animation: popIn .58s var(--e-out) .43s both; }
+    .tools > *:nth-child(4) { animation: popIn .58s var(--e-out) .495s both; }
+
+    /* Khu vực Hero */
+    .hero {
+      position: absolute;
+      left: calc(126 * var(--u));
+      top: calc(136 * var(--u));
+      max-width: calc(560 * var(--u));
+      z-index: 2;
+    }
+
+    .chip {
+      position: relative;
+      overflow: hidden;
+      display: inline-flex;
+      align-items: center;
+      height: calc(36 * var(--u));
+      border-radius: calc(18 * var(--u));
+      padding: 0 calc(15 * var(--u));
+      font-size: calc(13.5 * var(--u));
+      font-weight: 500;
+      letter-spacing: calc(-.1 * var(--u));
+      border: 1px solid rgba(255, 255, 255, .20);
+      background: rgba(255, 255, 255, .175);
+      -webkit-backdrop-filter: blur(calc(16 * var(--u))) saturate(115%);
+      backdrop-filter: blur(calc(16 * var(--u))) saturate(115%);
+      animation: wipeRight .80s var(--e-out) .44s both;
+    }
+
+    h1 {
+      margin-top: calc(14 * var(--u));
+      font-family: 'Inter Tight', 'Inter', sans-serif;
+      font-weight: 500;
+      font-size: calc(63 * var(--u));
+      line-height: calc(78 * var(--u));
+      letter-spacing: calc(.25 * var(--u));
+    }
+
+    .ln {
+      display: block;
+      overflow: hidden;
+      padding-block: calc(8 * var(--u));
+      margin-block: calc(-8 * var(--u));
+    }
+
+    .ln > span {
+      display: block;
+    }
+
+    h1 .ln:nth-child(1) > span {
+      animation: lineUp 1.05s var(--e-out) .56s both;
+    }
+
+    h1 .ln:nth-child(2) > span {
+      animation: lineUp 1.05s var(--e-out) .67s both;
+    }
+
+    .desc {
+      margin-top: calc(12 * var(--u));
+      width: calc(480 * var(--u));
+      max-width: 100%;
+      font-size: calc(15.2 * var(--u));
+      line-height: calc(24 * var(--u));
+      font-weight: 500;
+      letter-spacing: calc(-.3 * var(--u));
+      color: rgba(255, 255, 255, .95);
+      animation: wipeDown .90s var(--e-soft) .90s both;
+    }
+
+    /* Dải dự báo & biểu đồ sóng */
+    .forecast {
+      position: absolute;
+      left: calc(126 * var(--u));
+      right: calc(396 * var(--u));
+      bottom: calc(99 * var(--u));
+      z-index: 2;
+    }
+
+    .forecast-track {
+      width: 100%;
+    }
+
+    .temps {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .tcol {
+      display: inline-flex;
+      align-items: center;
+      gap: calc(8 * var(--u));
+      min-width: calc(96 * var(--u));
+      transition: opacity .25s var(--e-out);
+    }
+
+    .tcol:nth-child(1) { animation: riseIn .65s var(--e-out) 1.26s both; }
+    .tcol:nth-child(2) { animation: riseIn .65s var(--e-out) 1.33s both; }
+    .tcol:nth-child(3) { animation: riseIn .65s var(--e-out) 1.40s both; }
+    .tcol:nth-child(4) { animation: riseIn .65s var(--e-out) 1.47s both; }
+    .tcol:nth-child(5) { animation: riseIn .65s var(--e-out) 1.54s both; }
+    .tcol:nth-child(6) { animation: riseIn .65s var(--e-out) 1.61s both; }
+
+    .forecast.has-sel .tcol {
+      opacity: .72;
+    }
+
+    .forecast.has-sel .tcol.on {
+      opacity: 1;
+    }
+
+    .tval {
+      font-size: calc(37 * var(--u));
+      font-weight: 400;
+      letter-spacing: calc(-.7 * var(--u));
+      line-height: 1;
+    }
+
+    .tcol svg {
+      width: calc(28 * var(--u));
+      height: calc(28 * var(--u));
+      flex-shrink: 0;
+      display: block;
+    }
+
+    .chart {
+      margin-top: calc(43 * var(--u));
+      width: 100%;
+      height: calc(230 * var(--u));
+      display: block;
+    }
+
+    .wline {
+      stroke-dasharray: 1;
+      stroke-dashoffset: 1;
+      animation: drawLine 1.60s var(--e-pen) 1.50s both;
+    }
+
+    #wclipr rect {
+      transform-box: fill-box;
+      transform-origin: left center;
+      animation: wipeX 1.42s var(--e-pen) 1.72s both;
+    }
+
+    .days {
+      margin-top: calc(-31 * var(--u));
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: relative;
+      z-index: 2;
+    }
+
+    .days button {
+      min-width: calc(96 * var(--u));
+      text-align: left;
+      font-size: calc(18 * var(--u));
+      font-weight: 500;
+      line-height: 1.25;
+      color: rgba(255, 255, 255, .88);
+      padding: calc(4 * var(--u)) 0;
+      transition: color .2s var(--e-out), opacity .2s var(--e-out);
+    }
+
+    .days button:hover {
+      color: #ffffff;
+    }
+
+    .days button.on {
+      color: #ffffff;
+      font-weight: 600;
+    }
+
+    .days button:nth-child(1) { animation: riseIn .60s var(--e-out) 2.10s both; }
+    .days button:nth-child(2) { animation: riseIn .60s var(--e-out) 2.155s both; }
+    .days button:nth-child(3) { animation: riseIn .60s var(--e-out) 2.21s both; }
+    .days button:nth-child(4) { animation: riseIn .60s var(--e-out) 2.265s both; }
+    .days button:nth-child(5) { animation: riseIn .60s var(--e-out) 2.32s both; }
+    .days button:nth-child(6) { animation: riseIn .60s var(--e-out) 2.375s both; }
+
+    /* Cột phải & thẻ kính lỏng */
+    .rail {
+      position: absolute;
+      right: calc(38 * var(--u));
+      top: calc(134 * var(--u));
+      bottom: calc(95 * var(--u));
+      width: calc(310 * var(--u));
+      z-index: 2;
+      display: flex;
+      flex-direction: column;
+      gap: calc(20 * var(--u));
+    }
+
+    .card {
+      position: relative;
+      overflow: hidden;
+      border-radius: calc(24 * var(--u));
+      border: 1px solid var(--glass-line);
+      background: linear-gradient(180deg, rgba(255, 255, 255, .20) 0%, rgba(255, 255, 255, .258) 24%, rgba(255, 255, 255, .252) 78%, rgba(255, 255, 255, .232) 100%);
+      -webkit-backdrop-filter: blur(calc(26 * var(--u))) saturate(118%);
+      backdrop-filter: blur(calc(26 * var(--u))) saturate(118%);
+    }
+
+    .card.big {
+      border-radius: calc(26 * var(--u));
+      flex: 1;
+      padding: calc(18 * var(--u)) calc(22 * var(--u));
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      animation: slideR .95s var(--e-out) .80s both;
+    }
+
+    .card.row {
+      height: calc(120 * var(--u));
+      flex-shrink: 0;
+      padding: calc(18 * var(--u)) calc(22 * var(--u));
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      transition: transform .24s var(--e-out);
+    }
+
+    .card.row:hover {
+      transform: translateY(calc(-2 * var(--u)));
+    }
+
+    .rail > .card:nth-child(2) { animation: slideR .95s var(--e-out) .92s both; }
+    .rail > .card:nth-child(3) { animation: slideR .95s var(--e-out) 1.03s both; }
+    .rail > .card:nth-child(4) { animation: slideR .95s var(--e-out) 1.14s both; }
+
+    /* Vệt sáng quét qua thẻ và chip */
+    .card::after, .chip::after {
+      content: "";
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 0;
+      width: 38%;
+      pointer-events: none;
+      background: linear-gradient(100deg, transparent 0%, rgba(255, 255, 255, .17) 50%, transparent 100%);
+      transform: translate3d(-150%, 0, 0) skewX(-18deg);
+      animation: sheen 1.15s var(--e-soft) 2.55s 1 both;
+    }
+
+    .loc {
+      display: flex;
+      align-items: center;
+      gap: calc(8 * var(--u));
+      font-size: calc(15.5 * var(--u));
+      font-weight: 500;
+      color: rgba(255, 255, 255, .95);
+      animation: riseIn .65s var(--e-out) 1.04s both;
+    }
+
+    .loc svg {
+      width: calc(16 * var(--u));
+      height: calc(16 * var(--u));
+      flex-shrink: 0;
+    }
+
+    .big-temp {
+      display: flex;
+      align-items: baseline;
+      font-size: calc(92 * var(--u));
+      font-weight: 500;
+      line-height: .94;
+      letter-spacing: calc(-4.4 * var(--u));
+      margin-top: calc(4 * var(--u));
+      animation: riseIn .70s var(--e-out) 1.12s both;
+    }
+
+    .unit-btn {
+      display: inline-block;
+      margin-left: calc(6 * var(--u));
+      font: inherit;
+      letter-spacing: 0;
+      line-height: inherit;
+      color: inherit;
+      border-radius: calc(10 * var(--u));
+    }
+
+    .big-temp i {
+      font-style: normal;
+    }
+
+    .stats {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: calc(10 * var(--u));
+      animation: riseIn .65s var(--e-out) 1.20s both;
+    }
+
+    .stat {
+      display: flex;
+      flex-direction: column;
+      gap: calc(4 * var(--u));
+    }
+
+    .stat-top {
+      display: flex;
+      align-items: center;
+      gap: calc(5 * var(--u));
+      font-size: calc(13.5 * var(--u));
+      font-weight: 600;
+      line-height: 1.2;
+      white-space: nowrap;
+    }
+
+    .stat-top svg {
+      width: calc(15 * var(--u));
+      height: calc(15 * var(--u));
+      flex-shrink: 0;
+    }
+
+    .stat-lbl {
+      font-size: calc(11.5 * var(--u));
+      font-weight: 400;
+      color: rgba(255, 255, 255, .76);
+      line-height: 1.2;
+    }
+
+    .cmeta {
+      display: flex;
+      flex-direction: column;
+      gap: calc(4 * var(--u));
+    }
+
+    .card.row:nth-child(2) .cmeta { animation: riseIn .60s var(--e-out) 1.14s both; }
+    .card.row:nth-child(3) .cmeta { animation: riseIn .60s var(--e-out) 1.24s both; }
+    .card.row:nth-child(4) .cmeta { animation: riseIn .60s var(--e-out) 1.32s both; }
+
+    .country {
+      font-size: calc(12.5 * var(--u));
+      font-weight: 400;
+      color: rgba(255, 255, 255, .76);
+      line-height: 1.2;
+    }
+
+    .city {
+      font-size: calc(20 * var(--u));
+      font-weight: 600;
+      line-height: 1.2;
+      letter-spacing: calc(-.3 * var(--u));
+    }
+
+    .cond {
+      font-size: calc(13 * var(--u));
+      font-weight: 400;
+      color: rgba(255, 255, 255, .86);
+      line-height: 1.2;
+    }
+
+    .cval {
+      display: flex;
+      align-items: center;
+      gap: calc(10 * var(--u));
+    }
+
+    .card.row:nth-child(2) .cval { animation: riseIn .60s var(--e-out) 1.18s both; }
+    .card.row:nth-child(3) .cval { animation: riseIn .60s var(--e-out) 1.28s both; }
+    .card.row:nth-child(4) .cval { animation: riseIn .60s var(--e-out) 1.36s both; }
+
+    .ctemp {
+      font-size: calc(35 * var(--u));
+      font-weight: 400;
+      letter-spacing: calc(-.8 * var(--u));
+      line-height: 1;
+    }
+
+    .cval svg {
+      width: calc(32 * var(--u));
+      height: calc(32 * var(--u));
+      flex-shrink: 0;
+    }
+
+    /* Dự phòng khi trình duyệt không hỗ trợ backdrop-filter */
+    @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+      .sidebar {
+        background: linear-gradient(180deg, rgba(255, 255, 255, .245) 0%, rgba(255, 255, 255, .255) 13%, rgba(255, 255, 255, .218) 34%, rgba(255, 255, 255, .212) 100%);
+      }
+      .tool {
+        background: rgba(255, 255, 255, .27);
+      }
+      .chip {
+        background: rgba(255, 255, 255, .295);
+      }
+      .card {
+        background: linear-gradient(180deg, rgba(255, 255, 255, .32) 0%, rgba(255, 255, 255, .378) 24%, rgba(255, 255, 255, .372) 78%, rgba(255, 255, 255, .352) 100%);
+      }
+    }
+
+    /* Các keyframes vũ đạo vào trang */
+    @keyframes riseIn {
+      from {
+        opacity: 0;
+        transform: translate3d(0, var(--ry, calc(14 * var(--u))), 0);
+      }
+      to {
+        opacity: 1;
+        transform: none;
+      }
+    }
+
+    @keyframes slideL {
+      from {
+        opacity: 0;
+        transform: translate3d(calc(-26 * var(--u)), 0, 0);
+      }
+      to {
+        opacity: 1;
+        transform: none;
+      }
+    }
+
+    @keyframes slideR {
+      from {
+        opacity: 0;
+        transform: translate3d(calc(30 * var(--u)), 0, 0) scale(.985);
+      }
+      to {
+        opacity: 1;
+        transform: none;
+      }
+    }
+
+    @keyframes popIn {
+      from {
+        opacity: 0;
+        transform: scale(.7);
+      }
+      to {
+        opacity: 1;
+        transform: none;
+      }
+    }
+
+    @keyframes growY {
+      from {
+        opacity: 0;
+        transform: scaleY(0);
+      }
+      to {
+        opacity: 1;
+        transform: none;
+      }
+    }
+
+    @keyframes lineUp {
+      from {
+        transform: translate3d(0, 115%, 0);
+      }
+      to {
+        transform: none;
+      }
+    }
+
+    @keyframes wipeDown {
+      from {
+        opacity: 0;
+        clip-path: inset(0 0 100% 0);
+      }
+      to {
+        opacity: 1;
+        clip-path: inset(0 0 0 0);
+      }
+    }
+
+    @keyframes wipeRight {
+      from {
+        opacity: 0;
+        clip-path: inset(0 100% 0 0);
+      }
+      to {
+        opacity: 1;
+        clip-path: inset(0 0 0 0);
+      }
+    }
+
+    @keyframes drawLine {
+      from {
+        stroke-dashoffset: 1;
+      }
+      to {
+        stroke-dashoffset: 0;
+      }
+    }
+
+    @keyframes wipeX {
+      from {
+        transform: scaleX(0);
+      }
+      to {
+        transform: scaleX(1);
+      }
+    }
+
+    @keyframes sheen {
+      0% {
+        opacity: 0;
+        transform: translate3d(-150%, 0, 0) skewX(-18deg);
+      }
+      12% {
+        opacity: 1;
+      }
+      88% {
+        opacity: 1;
+      }
+      100% {
+        opacity: 0;
+        transform: translate3d(340%, 0, 0) skewX(-18deg);
+      }
+    }
+
+    /* Tương thích di động <= 860px */
+    @media (max-width: 860px) {
+      :root {
+        --u: min(calc(100vw / 430), 1.22px);
+      }
+
+      html, body {
+        height: auto;
+        min-height: 100%;
+        overflow-x: hidden;
+        overflow-y: auto;
+      }
+
+      .stage {
+        position: relative;
+        inset: auto;
+        min-height: 100dvh;
+        overflow: visible;
+        display: flex;
+        flex-direction: column;
+        gap: calc(22 * var(--u));
+        padding: calc(20 * var(--u)) calc(20 * var(--u)) calc(92 * var(--u) + env(safe-area-inset-bottom));
+      }
+
+      .storm-fallback, .bg, .stage::after {
+        position: fixed;
+        inset: 0;
+      }
+
+      main {
+        display: contents;
+      }
+
+      .header {
+        position: relative;
+        inset: auto;
+        height: auto;
+        order: 1;
+        align-items: center;
+      }
+
+      .uname {
+        margin-top: calc(6 * var(--u));
+      }
+
+      .tools {
+        gap: calc(10 * var(--u));
+      }
+
+      .tool, .avatar-btn {
+        width: calc(44 * var(--u));
+        height: calc(44 * var(--u));
+      }
+
+      .hero {
+        position: relative;
+        inset: auto;
+        max-width: 100%;
+        order: 2;
+      }
+
+      .rail {
+        display: contents;
+      }
+
+      .card.big {
+        order: 3;
+        flex: none;
+        gap: calc(18 * var(--u));
+        animation: riseIn .80s var(--e-out) .80s both;
+      }
+
+      .forecast {
+        position: relative;
+        inset: auto;
+        order: 4;
+        width: calc(100% + 40 * var(--u));
+        margin-left: calc(-20 * var(--u));
+        padding: 0 calc(20 * var(--u));
+        overflow-x: auto;
+        overflow-y: hidden;
+        -webkit-overflow-scrolling: touch;
+      }
+
+      .forecast-track {
+        min-width: calc(610 * var(--u));
+      }
+
+      .tcol {
+        min-width: calc(82 * var(--u));
+      }
+
+      .tval {
+        font-size: calc(28 * var(--u));
+      }
+
+      .tcol svg {
+        width: calc(22 * var(--u));
+        height: calc(22 * var(--u));
+      }
+
+      .chart {
+        margin-top: calc(18 * var(--u));
+        height: calc(140 * var(--u));
+      }
+
+      .days {
+        margin-top: calc(-22 * var(--u));
+      }
+
+      .days button {
+        min-width: calc(82 * var(--u));
+        font-size: calc(14.5 * var(--u));
+      }
+
+      .card.row {
+        order: 5;
+        height: calc(108 * var(--u));
+      }
+
+      .rail > .card:nth-child(2) { animation: riseIn .75s var(--e-out) .92s both; }
+      .rail > .card:nth-child(3) { animation: riseIn .75s var(--e-out) 1.03s both; }
+      .rail > .card:nth-child(4) { animation: riseIn .75s var(--e-out) 1.14s both; }
+
+      /* Dock cố định ở đáy trên di động */
+      .sidebar {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        top: auto;
+        width: 100%;
+        height: calc(64 * var(--u) + env(safe-area-inset-bottom));
+        padding: 0 calc(16 * var(--u)) env(safe-area-inset-bottom);
+        flex-direction: row;
+        justify-content: space-around;
+        border-radius: calc(20 * var(--u)) calc(20 * var(--u)) 0 0;
+        border-bottom: 0;
+        z-index: 20;
+        animation: riseIn .70s var(--e-out) .05s both;
+      }
+
+      .dot, .logo {
+        display: none;
+      }
+
+      .nav {
+        margin-top: 0;
+        flex-direction: row;
+        gap: 0;
+        flex: 1;
+        justify-content: space-around;
+      }
+
+      .nav a, .logout {
+        width: calc(44 * var(--u));
+        height: calc(44 * var(--u));
+      }
+
+      .logout {
+        margin-top: 0;
+      }
+    }
+
+    @media (max-width: 420px) {
+      :root {
+        --u: calc(100vw / 430);
+      }
+    }
+
+    /* Giảm chuyển động: hiện ngay trạng thái cuối */
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation: none !important;
+        transition: none !important;
+      }
+      .card::after, .chip::after {
+        display: none !important;
+      }
+      .wline {
+        stroke-dashoffset: 0 !important;
+      }
+      #wclipr rect {
+        transform: none !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!--
+    HƯỚNG DẪN CHỈNH SỬA NHANH (USER_NAME = "Chí Hiếu"):
+    - Tên người dùng hiển thị ở .uname ("Chí Hiếu")
+    - Thành phố chính, nhiệt độ và số đo nằm ở .card.big ("Sa Pa, Lào Cai", data-c="10")
+    - Ảnh nền thật: đặt tệp tại ./assets/storm-background.jpg để tự động phủ lên lớp SVG dự phòng
+    - Ảnh đại diện thật: thay <svg aria-hidden="true"><use href="#i-avatar"/></svg> trong .avatar-btn bằng <img src="./assets/avatar.jpg" alt="Ảnh đại diện">
+  -->
+
+  <!-- Sprite biểu tượng SVG nội tuyến -->
+  <svg aria-hidden="true" style="position:absolute;width:0;height:0;overflow:hidden">
+    <defs>
+      <radialGradient id="avBg" cx="35%" cy="28%" r="75%">
+        <stop offset="0%" stop-color="#3a6b72"/>
+        <stop offset="55%" stop-color="#1d3f4a"/>
+        <stop offset="100%" stop-color="#0b1f29"/>
+      </radialGradient>
+    </defs>
+
+    <symbol id="i-grid" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="3.5" y="3.5" width="7" height="7" rx="1.6"/>
+      <rect x="13.5" y="3.5" width="7" height="7" rx="1.6"/>
+      <rect x="3.5" y="13.5" width="7" height="7" rx="1.6"/>
+      <rect x="13.5" y="13.5" width="7" height="7" rx="1.6"/>
+    </symbol>
+
+    <symbol id="i-chart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M4 19.5h16"/>
+      <path d="M5 15l4.8-4.8 3.6 3.2L19 7"/>
+      <circle cx="19" cy="7" r="1.5" fill="currentColor" stroke="none"/>
+    </symbol>
+
+    <symbol id="i-globe" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="8.5"/>
+      <path d="M3.8 12h16.4"/>
+      <path d="M12 3.5c2.6 2.4 4 5.4 4 8.5s-1.4 6.1-4 8.5c-2.6-2.4-4-5.4-4-8.5s1.4-6.1 4-8.5z"/>
+    </symbol>
+
+    <symbol id="i-cal" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/>
+      <path d="M8 3.2v3.3M16 3.2v3.3M3.5 9.8h17"/>
+    </symbol>
+
+    <symbol id="i-gear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="3.2"/>
+      <path d="M12 3.5v2M12 18.5v2M3.5 12h2M18.5 12h2M6 6l1.4 1.4M16.6 16.6L18 18M18 6l-1.4 1.4M7.4 16.6L6 18"/>
+    </symbol>
+
+    <symbol id="i-out" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M10 4.5H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h4"/>
+      <path d="M14.5 16.5L19 12l-4.5-4.5"/>
+      <path d="M19 12H9.5"/>
+    </symbol>
+
+    <symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+      <path d="M12 5v14M5 12h14"/>
+    </symbol>
+
+    <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="11" cy="11" r="6.5"/>
+      <path d="M16 16l4.2 4.2"/>
+    </symbol>
+
+    <symbol id="i-bell" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M18 15.5H6l1.4-2.1V10a4.6 4.6 0 0 1 9.2 0v3.4l1.4 2.1z"/>
+      <path d="M10.2 18.5a2 2 0 0 0 3.6 0"/>
+    </symbol>
+
+    <symbol id="i-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 21s6.5-5.8 6.5-11a6.5 6.5 0 1 0-13 0c0 5.2 6.5 11 6.5 11z"/>
+      <circle cx="12" cy="10" r="2.2"/>
+    </symbol>
+
+    <symbol id="i-wind" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3.5 9h11.5a2.5 2.5 0 1 0-2.5-2.5"/>
+      <path d="M3.5 13.5h14.5a2.5 2.5 0 1 1-2.5 2.5"/>
+      <path d="M3.5 18h7.5"/>
+    </symbol>
+
+    <symbol id="i-drop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 3.5s5.8 6.4 5.8 10.7a5.8 5.8 0 1 1-11.6 0C6.2 9.9 12 3.5 12 3.5z"/>
+    </symbol>
+
+    <symbol id="i-gust" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3 8.5h13a2.2 2.2 0 1 0-2.2-2.2"/>
+      <path d="M3 12.5h16a2.3 2.3 0 1 1-2.3 2.3"/>
+      <path d="M5 16.5h7.5a2 2 0 1 1-2 2"/>
+    </symbol>
+
+    <symbol id="i-cloud" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M7 18h10.2a3.8 3.8 0 0 0 .5-7.6A5.2 5.2 0 0 0 7.6 9.3 4.2 4.2 0 0 0 7 18z"/>
+    </symbol>
+
+    <symbol id="i-cloud2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="9" cy="8.5" r="2.7"/>
+      <path d="M9 3.8v1.1M4.3 8.5h1.1M5.7 5.2l.8.8M12.3 5.2l-.8.8"/>
+      <path d="M7.5 18.5h9.8a3.4 3.4 0 0 0 .4-6.8A4.6 4.6 0 0 0 8.8 10.9a3.8 3.8 0 0 0-1.3 7.6z"/>
+    </symbol>
+
+    <symbol id="i-hail" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M6.8 14.5h10.4a3.5 3.5 0 0 0 .4-7A4.9 4.9 0 0 0 8 6.5a3.9 3.9 0 0 0-1.2 8z"/>
+      <circle cx="8.5" cy="18.2" r="1.1" fill="currentColor" stroke="none"/>
+      <circle cx="12.2" cy="19.8" r="1.1" fill="currentColor" stroke="none"/>
+      <circle cx="15.8" cy="18.2" r="1.1" fill="currentColor" stroke="none"/>
+    </symbol>
+
+    <symbol id="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="4.2"/>
+      <path d="M12 3.2v2.1M12 18.7v2.1M3.2 12h2.1M18.7 12h2.1M5.8 5.8l1.5 1.5M16.7 16.7l1.5 1.5M18.2 5.8l-1.5 1.5M7.3 16.7l-1.5 1.5"/>
+    </symbol>
+
+    <symbol id="i-avatar" viewBox="0 0 52 52">
+      <circle cx="26" cy="26" r="26" fill="url(#avBg)"/>
+      <circle cx="26" cy="20" r="8.2" fill="rgba(255,255,255,.88)"/>
+      <path d="M10.5 45.5c2.3-8.6 8.6-13.2 15.5-13.2s13.2 4.6 15.5 13.2" fill="rgba(255,255,255,.88)"/>
+    </symbol>
+  </svg>
+
+  <div class="stage">
+    <!-- Lớp nền SVG bão dự phòng -->
+    <svg class="storm-fallback" aria-hidden="true" viewBox="0 0 1357 871" preserveAspectRatio="xMidYMid slice">
+      <defs>
+        <linearGradient id="skyGrad" x1="0%" y1="0%" x2="85%" y2="100%">
+          <stop offset="0%" stop-color="#04121b"/>
+          <stop offset="48%" stop-color="#0a2a2e"/>
+          <stop offset="100%" stop-color="#0f3b3a"/>
+        </linearGradient>
+        <linearGradient id="meadowGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#12331f"/>
+          <stop offset="100%" stop-color="#1d4a2b"/>
+        </linearGradient>
+        <filter id="cloudNoise" x="-5%" y="-5%" width="110%" height="110%">
+          <feTurbulence type="fractalNoise" baseFrequency="0.004 0.012" numOctaves="3" seed="7" result="noise"/>
+          <feColorMatrix in="noise" type="matrix" values="
+            0 0 0 0 0.08
+            0 0 0 0 0.24
+            0 0 0 0 0.26
+            0 0 0 0.48 0"/>
+        </filter>
+        <filter id="boltGlow" x="-40%" y="-20%" width="180%" height="140%">
+          <feGaussianBlur stdDeviation="5" result="blur"/>
+          <feMerge>
+            <feMergeNode in="blur"/>
+            <feMergeNode in="SourceGraphic"/>
+          </feMerge>
+        </filter>
+      </defs>
+
+      <rect width="1357" height="871" fill="url(#skyGrad)"/>
+      <rect width="1357" height="710" filter="url(#cloudNoise)" opacity=".85"/>
+
+      <!-- 3 tia sét mảnh màu trắng xanh -->
+      <g filter="url(#boltGlow)" fill="none" stroke="#dff6ff" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M742 54 L731 96 L739 109 L721 158 L733 176 L712 232 L724 252 L704 316 L715 336 L692 418" stroke-width="1.8" opacity=".82"/>
+        <path d="M733 176 L754 209 L748 234 L765 268" stroke-width="1" opacity=".52"/>
+        <path d="M721 158 L702 192 L707 214" stroke-width=".9" opacity=".42"/>
+        <path d="M998 22 L986 68 L995 84 L976 142 L988 162 L968 224 L978 248 L954 328" stroke-width="1.4" opacity=".64"/>
+        <path d="M988 162 L1008 196 L1002 224" stroke-width=".85" opacity=".38"/>
+        <path d="M482 96 L472 138 L479 152 L462 198 L470 214 L454 268" stroke-width="1.1" opacity=".45"/>
+      </g>
+
+      <!-- Dải đồng cỏ xanh sẫm dưới đáy -->
+      <path d="M0 726 Q340 694 690 718 T1357 704 L1357 871 L0 871 Z" fill="url(#meadowGrad)"/>
+      <path d="M0 762 Q420 732 840 756 T1357 742 L1357 871 L0 871 Z" fill="#102c1a" opacity=".75"/>
+    </svg>
+
+    <!-- Lớp ảnh nền bão (tự trong suốt nếu chưa có tệp ảnh) -->
+    <div class="bg" aria-hidden="true"></div>
+
+    <!-- Thanh bên điều hướng -->
+    <aside class="sidebar">
+      <span class="dot" aria-hidden="true"></span>
+      <svg class="logo" viewBox="0 0 40 40" aria-hidden="true">
+        <defs>
+          <clipPath id="waveClip">
+            <circle cx="20" cy="20" r="11.5"/>
+          </clipPath>
+        </defs>
+        <rect x="1" y="1" width="38" height="38" rx="12" fill="rgba(255,255,255,.16)" stroke="rgba(255,255,255,.32)" stroke-width="1.2"/>
+        <g clip-path="url(#waveClip)" fill="none" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round">
+          <path d="M6 11 Q13 8.5 20 11 T34 11"/>
+          <path d="M6 14 Q13 11.5 20 14 T34 14"/>
+          <path d="M6 17 Q13 14.5 20 17 T34 17"/>
+          <path d="M6 20 Q13 17.5 20 20 T34 20"/>
+          <path d="M6 23 Q13 20.5 20 23 T34 23"/>
+          <path d="M6 26 Q13 23.5 20 26 T34 26"/>
+          <path d="M6 29 Q13 26.5 20 29 T34 29"/>
+        </g>
+      </svg>
+
+      <nav class="nav" aria-label="Điều hướng chính">
+        <a href="#bang-dieu-khien" aria-label="Bảng điều khiển" aria-current="page">
+          <svg aria-hidden="true"><use href="#i-grid"/></svg>
+        </a>
+        <a href="#bao-cao" aria-label="Báo cáo">
+          <svg aria-hidden="true"><use href="#i-chart"/></svg>
+        </a>
+        <a href="#kham-pha" aria-label="Khám phá khu vực">
+          <svg aria-hidden="true"><use href="#i-globe"/></svg>
+        </a>
+        <a href="#lich" aria-label="Lịch">
+          <svg aria-hidden="true"><use href="#i-cal"/></svg>
+        </a>
+        <a href="#cai-dat" aria-label="Cài đặt">
+          <svg aria-hidden="true"><use href="#i-gear"/></svg>
+        </a>
+      </nav>
+
+      <button type="button" class="logout" aria-label="Đăng xuất">
+        <svg aria-hidden="true"><use href="#i-out"/></svg>
+      </button>
+    </aside>
+
+    <!-- Đầu trang -->
+    <header class="header">
+      <div class="user-meta">
+        <span class="greet">Xin chào</span>
+        <span class="uname">Chí Hiếu</span>
+      </div>
+      <div class="tools">
+        <button type="button" class="tool" aria-label="Thêm địa điểm">
+          <svg aria-hidden="true"><use href="#i-plus"/></svg>
+        </button>
+        <button type="button" class="tool" aria-label="Tìm kiếm">
+          <svg aria-hidden="true"><use href="#i-search"/></svg>
+        </button>
+        <button type="button" class="tool" aria-label="Thông báo">
+          <svg aria-hidden="true"><use href="#i-bell"/></svg>
+        </button>
+        <!-- Thay <svg> bên dưới bằng <img src="./assets/avatar.jpg" alt="Ảnh đại diện"> khi có ảnh thật -->
+        <button type="button" class="avatar-btn" aria-label="Ảnh đại diện">
+          <svg aria-hidden="true"><use href="#i-avatar"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Nội dung chính -->
+    <main>
+      <section class="hero" aria-labelledby="hero-title">
+        <span class="chip">Dự báo thời tiết</span>
+        <h1 id="hero-title">
+          <span class="ln"><span>Bão</span></span>
+          <span class="ln"><span>kèm mưa lớn</span></span>
+        </h1>
+        <p class="desc">Trời ít mây, thỉnh thoảng có mưa tuyết. Nhiệt độ cao nhất khoảng 10°C. Gió đông 18 đến 34 km/h. Khả năng có tuyết 40%, lượng mưa dự kiến dưới 25 mm.</p>
+      </section>
+
+      <section class="forecast" aria-label="Dự báo nhiệt độ trong tuần">
+        <div class="forecast-track">
+          <div class="temps">
+            <div class="tcol">
+              <span class="tval" data-c="11">11°</span>
+              <svg aria-hidden="true"><use href="#i-cloud"/></svg>
+            </div>
+            <div class="tcol">
+              <span class="tval" data-c="13">13°</span>
+              <svg aria-hidden="true"><use href="#i-cloud2"/></svg>
+            </div>
+            <div class="tcol">
+              <span class="tval" data-c="14">14°</span>
+              <svg aria-hidden="true"><use href="#i-cloud2"/></svg>
+            </div>
+            <div class="tcol on">
+              <span class="tval" data-c="10">10°</span>
+              <svg aria-hidden="true"><use href="#i-hail"/></svg>
+            </div>
+            <div class="tcol">
+              <span class="tval" data-c="19">19°</span>
+              <svg aria-hidden="true"><use href="#i-sun"/></svg>
+            </div>
+            <div class="tcol">
+              <span class="tval" data-c="12">12°</span>
+              <svg aria-hidden="true"><use href="#i-cloud"/></svg>
+            </div>
+          </div>
+
+          <svg class="chart" viewBox="0 0 835 230" preserveAspectRatio="none" role="img" aria-label="Xu hướng nhiệt độ trong tuần: 11, 13, 14, 10, 19 và 12 độ C, tăng mạnh vào thứ năm.">
+            <defs>
+              <linearGradient id="wg" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stop-color="#ffffff" stop-opacity=".15"/>
+                <stop offset="40%" stop-color="#ffffff" stop-opacity=".9"/>
+                <stop offset="100%" stop-color="#ffffff" stop-opacity=".4"/>
+              </linearGradient>
+              <linearGradient id="wf" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stop-color="rgba(255,255,255,.22)"/>
+                <stop offset="100%" stop-color="rgba(255,255,255,0)"/>
+              </linearGradient>
+              <linearGradient id="wfadeGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stop-color="#ffffff"/>
+                <stop offset="68%" stop-color="#b3b3b3"/>
+                <stop offset="100%" stop-color="#000000"/>
+              </linearGradient>
+              <mask id="wfade">
+                <rect x="0" y="0" width="835" height="230" fill="url(#wfadeGrad)"/>
+              </mask>
+              <clipPath id="wclip">
+                <rect x="0" y="0" width="835" height="230"/>
+              </clipPath>
+              <clipPath id="wclipr">
+                <rect x="0" y="0" width="835" height="230"/>
+              </clipPath>
+            </defs>
+
+            <g clip-path="url(#wclip)">
+              <path d="M0,79 C70,79 110,62 170,62 C240,62 280,98 345,98 C410,98 440,50 520,50 C590,50 620,120 700,118 C760,116 790,86 835,86 L835,230 L0,230 Z" fill="url(#wf)" mask="url(#wfade)" clip-path="url(#wclipr)"/>
+              <path class="wline" d="M0,79 C70,79 110,62 170,62 C240,62 280,98 345,98 C410,98 440,50 520,50 C590,50 620,120 700,118 C760,116 790,86 835,86" fill="none" stroke="url(#wg)" stroke-width="6.2" opacity=".17" stroke-linecap="round" stroke-linejoin="round" pathLength="1"/>
+              <path class="wline" d="M0,79 C70,79 110,62 170,62 C240,62 280,98 345,98 C410,98 440,50 520,50 C590,50 620,120 700,118 C760,116 790,86 835,86" fill="none" stroke="url(#wg)" stroke-width="4.6" opacity=".26" stroke-linecap="round" stroke-linejoin="round" pathLength="1"/>
+              <path class="wline" d="M0,79 C70,79 110,62 170,62 C240,62 280,98 345,98 C410,98 440,50 520,50 C590,50 620,120 700,118 C760,116 790,86 835,86" fill="none" stroke="url(#wg)" stroke-width="3.4" opacity="1" stroke-linecap="round" stroke-linejoin="round" pathLength="1"/>
+            </g>
+          </svg>
+
+          <div class="days" role="group" aria-label="Chọn ngày trong tuần">
+            <button type="button">Chủ nhật</button>
+            <button type="button">Thứ hai</button>
+            <button type="button">Thứ ba</button>
+            <button type="button" class="on" aria-current="true">Thứ tư</button>
+            <button type="button">Thứ năm</button>
+            <button type="button">Thứ sáu</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="rail" aria-label="Thời tiết hiện tại và các thành phố lân cận">
+        <article class="card big" aria-label="Thời tiết tại Sa Pa, Lào Cai">
+          <h2 class="loc">
+            <svg aria-hidden="true"><use href="#i-pin"/></svg>
+            <span>Sa Pa, Lào Cai</span>
+          </h2>
+          <div class="big-temp">
+            <span data-c="10">10°</span><button type="button" class="unit-btn" aria-label="Chuyển sang độ F"><i>C</i></button>
+          </div>
+          <div class="stats">
+            <div class="stat">
+              <div class="stat-top">
+                <svg aria-hidden="true"><use href="#i-wind"/></svg>
+                <span>19 km/h</span>
+              </div>
+              <span class="stat-lbl">Gió</span>
+            </div>
+            <div class="stat">
+              <div class="stat-top">
+                <svg aria-hidden="true"><use href="#i-drop"/></svg>
+                <span>40%</span>
+              </div>
+              <span class="stat-lbl">Mưa tuyết</span>
+            </div>
+            <div class="stat">
+              <div class="stat-top">
+                <svg aria-hidden="true"><use href="#i-gust"/></svg>
+                <span>31 km/h</span>
+              </div>
+              <span class="stat-lbl">Gió giật</span>
+            </div>
+          </div>
+        </article>
+
+        <article class="card row" aria-label="Thời tiết tại Hà Nội">
+          <div class="cmeta">
+            <span class="country">Việt Nam</span>
+            <h2 class="city">Hà Nội</h2>
+            <span class="cond">Nhiều nắng</span>
+          </div>
+          <div class="cval">
+            <span class="ctemp" data-c="12">12°</span>
+            <svg aria-hidden="true"><use href="#i-cloud"/></svg>
+          </div>
+        </article>
+
+        <article class="card row" aria-label="Thời tiết tại Đà Lạt">
+          <div class="cmeta">
+            <span class="country">Việt Nam</span>
+            <h2 class="city">Đà Lạt</h2>
+            <span class="cond">Nhiều mây</span>
+          </div>
+          <div class="cval">
+            <span class="ctemp" data-c="10">10°</span>
+            <svg aria-hidden="true"><use href="#i-cloud"/></svg>
+          </div>
+        </article>
+
+        <article class="card row" aria-label="Thời tiết tại Hà Giang">
+          <div class="cmeta">
+            <span class="country">Việt Nam</span>
+            <h2 class="city">Hà Giang</h2>
+            <span class="cond">Nắng</span>
+          </div>
+          <div class="cval">
+            <span class="ctemp" data-c="14">14°</span>
+            <svg aria-hidden="true"><use href="#i-cloud2"/></svg>
+          </div>
+        </article>
+      </section>
+    </main>
+  </div>
+
+  <!-- Tương tác bổ sung: đổi °C/°F và chọn ngày -->
+  <script>
+    (() => {
+      const unitBtn = document.querySelector('.unit-btn');
+      const forecast = document.querySelector('.forecast');
+      const cols = [...document.querySelectorAll('.tcol')];
+      const days = [...document.querySelectorAll('.days button')];
+      let isF = false;
+      if (unitBtn) {
+        unitBtn.addEventListener('click', () => {
+          isF = !isF;
+          document.querySelectorAll('[data-c]').forEach((el) => {
+            const c = Number(el.dataset.c);
+            el.textContent = (isF ? Math.round(c * 9 / 5 + 32) : c) + '°';
+          });
+          unitBtn.firstElementChild.textContent = isF ? 'F' : 'C';
+          unitBtn.setAttribute('aria-label', isF ? 'Chuyển sang độ C' : 'Chuyển sang độ F');
+        });
+      }
+      days.forEach((btn, idx) => {
+        btn.addEventListener('click', () => {
+          forecast.classList.add('has-sel');
+          days.forEach((b, i) => {
+            b.classList.toggle('on', i === idx);
+            if (i === idx) b.setAttribute('aria-current', 'true');
+            else b.removeAttribute('aria-current');
+          });
+          cols.forEach((c, i) => c.classList.toggle('on', i === idx));
+        });
+      });
+    })();
+  </script>
+</body>
+</html>

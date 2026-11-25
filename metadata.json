@@ -1,0 +1,8 @@
+{
+  "name": "Dự báo thời tiết — Sa Pa",
+  "description": "Bảng điều khiển dự báo thời tiết Sa Pa với diễn biến nhiệt độ trong tuần và các thành phố lân cận.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
